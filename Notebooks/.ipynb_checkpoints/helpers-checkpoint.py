@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 from sklearn.covariance import EllipticEnvelope
+from sklearn import datasets, metrics, preprocessing, tree
+
 
 from data import *
 
@@ -72,6 +74,50 @@ def create_labeled_dataset(directory,columns):
             #new_filename = filename.split(".")[0]+".csv"
             #to_csv(df_labeled,dir_path+'/labeled_dataset/'+new_filename)
 
+def preprocess(file,columns):
+    df_labeled = pd.read_csv(file)
+
+    #creation of X and y
+    X,y = split_input_output(df_labeled,target_feature='label')
+
+    #Detect and remove outliers
+    X,y = remove_outliers(X,y,contamination=0.03)
+
+    #Standardize our data
+    scaler = preprocessing.MinMaxScaler(feature_range=(-1,1))
+    X[X.columns] = scaler.fit_transform(X[X.columns])
+
+    #Save file in csv format
+    save_to_csv(X,y)
+    return X,y
+            
+def run_FlowGrid():
+    os.system("python ../FlowGrid/sample_code.py --f fc_data.csv --n 4 --eps 1.1")
+    
+def cluster(columns):
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    folder_intput = 'labeled_dataset/'
+    for entry in os.scandir(dir_path+directory):
+        if not entry.is_file:
+            continue
+        elif entry.path.endswith(".csv") and entry.is_file():
+            print(entry.path)
+            
+#directory: folder where you can find all_event and gated
+def cluster(directory,columns):
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    folder_intput = 'labeled_dataset/'
+    folder_output = 'labeled_dataset/'
+    for filename in os.listdir(dir_path+ directory+folder_all):
+        if filename.endswith(".fcs"):
+            df_all = load_data(filename,directory+folder_all,columns)
+            df_gated = load_data(filename,directory+folder_gated,columns)
+            df_labeled = label(df_all,df_gated,label_gated=3,label_not_gated=1)
+            new_filename = filename.split(".")[0]+".csv"
+            df_labeled.to_csv(folder_output+new_filename, index=False)
+            
+            #new_filename = filename.split(".")[0]+".csv"
+            #to_csv(df_labeled,dir_path+'/labeled_dataset/'+new_filename)
 
 def save_to_csv(X,y,X_name="fc_data.csv",y_name="label_data.csv"):
     to_csv(X,X_name)
