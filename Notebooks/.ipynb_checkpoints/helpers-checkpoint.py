@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.covariance import EllipticEnvelope
 from sklearn import datasets, metrics, preprocessing, tree
+from scipy.stats import zscore
 
 
 from data import *
@@ -58,7 +59,7 @@ def label(df_all,df_gated,label_gated,label_not_gated):
     return df_labeled
 
 #directory: folder where you can find all_event and gated
-def create_labeled_dataset(directory,columns):
+def create_labeled_dataset(directory,columns,label_gated,label_not_gated):
     dir_path = os.path.dirname(os.path.realpath(__file__))
     folder_all = 'all_event/'
     folder_gated = 'gated/'
@@ -67,7 +68,7 @@ def create_labeled_dataset(directory,columns):
         if filename.endswith(".fcs"):
             df_all = load_data(filename,directory+folder_all,columns)
             df_gated = load_data(filename,directory+folder_gated,columns)
-            df_labeled = label(df_all,df_gated,label_gated=3,label_not_gated=1)
+            df_labeled = label(df_all,df_gated,label_gated=label_gated,label_not_gated=label_not_gated)
             new_filename = filename.split(".")[0]+".csv"
             df_labeled.to_csv(folder_output+new_filename, index=False)
             
@@ -81,7 +82,7 @@ def preprocess(file,columns):
     X,y = split_input_output(df_labeled,target_feature='label')
 
     #Detect and remove outliers
-    X,y = remove_outliers(X,y,contamination=0.03)
+    X,y = remove_outliers_with_y(X,y)
 
     #Standardize our data
     scaler = preprocessing.MinMaxScaler(feature_range=(-1,1))
@@ -91,8 +92,11 @@ def preprocess(file,columns):
     save_to_csv(X,y)
     return X,y
             
-def run_FlowGrid():
-    os.system("python ../FlowGrid/sample_code.py --f fc_data.csv --n 4 --eps 1.1")
+def run_FlowGrid(nbins=4,eps=1.1,isEvaluation=False):
+    command = "python ../FlowGrid/sample_code.py --f fc_data.csv --n "+str(nbins)+" --eps "+str(eps)
+    if(isEvaluation):
+        command+= " --l label_data.csv > output.txt"
+    os.system(command)
     
 def cluster(columns):
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -104,7 +108,7 @@ def cluster(columns):
             print(entry.path)
             
 #directory: folder where you can find all_event and gated
-def cluster(directory,columns):
+def cluster(directory,columns,label_gated,label_not_gated):
     dir_path = os.path.dirname(os.path.realpath(__file__))
     folder_intput = 'labeled_dataset/'
     folder_output = 'labeled_dataset/'
@@ -112,7 +116,7 @@ def cluster(directory,columns):
         if filename.endswith(".fcs"):
             df_all = load_data(filename,directory+folder_all,columns)
             df_gated = load_data(filename,directory+folder_gated,columns)
-            df_labeled = label(df_all,df_gated,label_gated=3,label_not_gated=1)
+            df_labeled = label(df_all,df_gated,label_gated=label_gated,label_not_gated=label_not_gated)
             new_filename = filename.split(".")[0]+".csv"
             df_labeled.to_csv(folder_output+new_filename, index=False)
             
@@ -129,25 +133,19 @@ def to_csv(df,name):
 
     
 
+#Remove all outliers. An outlier of a dataset is defined as a value that is more than 'distance' standard deviations from the mean.
+def remove_outliers(df,distance=3):
+    z_scores = zscore(df)
+    abs_z_scores = np.abs(z_scores)
+    filtered_entries = (abs_z_scores < distance).all(axis=1)
+    return df[filtered_entries]
 
-#def remove_outliers(data, max_deviation, indexes=[]):
-#    if len(indexes) != 0:
-#        indexes = indexes[ np.linalg.norm(data, axis=1) <  max_deviation]
-#    data = data[ np.linalg.norm(data, axis=1) <  max_deviation, :]
-#    return data, indexes
+def remove_outliers_with_y(df,y,distance=3):
+    z_scores = zscore(df)
+    abs_z_scores = np.abs(z_scores)
+    filtered_entries = (abs_z_scores < distance).all(axis=1)
+    return df[filtered_entries],y[filtered_entries]
 
-def remove_outliers(X,y,contamination):
-    ee = EllipticEnvelope(contamination=contamination)
-    yhat = ee.fit_predict(X)
-    mask = yhat != -1
-    X, y = X.loc[mask, :], y[mask]
-    return X,y
-
-def remove_outliers_with_indices(data, max_deviation, indexes=[]):
-    if len(indexes) != 0:
-        indexes = indexes[ np.linalg.norm(data, axis=1) <  max_deviation]
-    data = data[ np.linalg.norm(data, axis=1) <  max_deviation, :]
-    return data, indexes
 
 def export_csv(data, name):
     np.savetxt(name+".csv", data, delimiter=",")
