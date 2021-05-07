@@ -49,8 +49,8 @@ def label(df_all,df_gated,label_gated,label_not_gated):
     df_not_gated = df_all.loc[~df_all["hash"].isin(df_gated["hash"]), :]
 
     #label dataset
-    df_gated.loc[:,"label"] = 3
-    df_not_gated.loc[:,"label"] = 1
+    df_gated.loc[:,"label"] = label_gated
+    df_not_gated.loc[:,"label"] = label_not_gated
 
     #concat dataset and remove hash column
     #df_final = pd.concat([df_gated, df_not_gated], ignore_index=True)
@@ -59,18 +59,17 @@ def label(df_all,df_gated,label_gated,label_not_gated):
     return df_labeled
 
 #directory: folder where you can find all_event and gated
-def create_labeled_dataset(directory,columns,label_gated,label_not_gated):
+def create_labeled_dataset(directory,columns,folder_output='/../labeled_dataset/',label_gated=3,label_not_gated=-1):
     dir_path = os.path.dirname(os.path.realpath(__file__))
     folder_all = 'all_event/'
     folder_gated = 'gated/'
-    folder_output = 'labeled_dataset/'
     for filename in os.listdir(dir_path+ directory+folder_all):
         if filename.endswith(".fcs"):
             df_all = load_data(filename,directory+folder_all,columns)
             df_gated = load_data(filename,directory+folder_gated,columns)
             df_labeled = label(df_all,df_gated,label_gated=label_gated,label_not_gated=label_not_gated)
             new_filename = filename.split(".")[0]+".csv"
-            df_labeled.to_csv(folder_output+new_filename, index=False)
+            df_labeled.to_csv(dir_path+folder_output+new_filename, index=False)
             
             #new_filename = filename.split(".")[0]+".csv"
             #to_csv(df_labeled,dir_path+'/labeled_dataset/'+new_filename)
