@@ -3,27 +3,21 @@ import pandas as pd
 from sklearn.covariance import EllipticEnvelope
 from sklearn import datasets, metrics, preprocessing, tree
 from scipy.stats import zscore
+from scipy.stats import gaussian_kde
+from sklearn.cluster import KMeans
+from scipy.cluster.vq import vq, kmeans as sci_kmean
+from sklearn.cluster import DBSCAN
+from sklearn.cluster import OPTICS
+from sklearn.mixture import GaussianMixture
 
 
 from data import *
 
-def standardize(x):
-    """Standardize the original data set."""
-    x = x - x.mean(axis=0)
-    x = x / x.std(axis=0)
-    return x
-
-
-def standardize_log(x):
-    indexes = np.arange(x.shape[0])
-    indexes = indexes[(x > 0).all(axis=1)]
-
-    x = x[(x > 0).all(axis=1)]
-    x = np.log(x)
-    x = x - x.mean(axis=0)
-    x = x / x.std(axis=0)
-    return x, indexes
-
+"""
+******************************************************************************
+Helpers outside the class
+******************************************************************************
+"""
 def split_input_output(df,target_feature):
     X = df.drop(target_feature,axis=1)
     y = df[target_feature]
@@ -149,6 +143,67 @@ def remove_outliers_with_y(df,y,distance=3):
 def export_csv(data, name):
     np.savetxt(name+".csv", data, delimiter=",")
     
+
+"""
+  Return the centroids (mean point of a cluster) from a given assignment.
+  Parameters:
+    assignment : A clusterisation array given by one the clusterisation function.
+  Return :
+    A table of tuples composed of (id_of_cluster, position_of_centroid)
+"""
+def get_centroids(data,assignment):
+    centroids = []
+    for cur in np.unique(assignment):
+        center = np.mean(data[assignment==cur], axis=0)
+        centroids.append((cur, center))
+    return centroids
+
+
+"""
+  Run the KMeans algorithm on the dataset
+  Parameters:
+    n_clusters : The number of expected clusters
+  Returns :
+    An array of assignment for each sample to a cluster
+"""
+def clusterKMeans(data,n_clusters=2, random_state=0):
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state).fit(data)
+    labels = kmeans.labels_
+    return labels
+
+
+"""
+  Run the DBSCAN algorithm on the dataset
+  Parameters:
+    eps : The maximum distance for two points to be considered neighbor
+    min_samples : The minimum number of samples in the neighborhood of a point to be considered to be in the same cluster
+  Returns :
+    An array of assignment for each sample to a cluster
+"""
+def clusterDBSCAN(data,eps=0.7, min_samples=188,metric='euclidean', algorithm='auto'):
+    assignment = DBSCAN(eps=eps, min_samples=min_samples, metric=metric, algorithm=algorithm).fit(data).labels_
+    return assignment
+
+"""
+  Run the OPTICS algorithm on the dataset
+  Returns :
+    An array of assignment for each sample to a cluster
+"""
+def clusterOPTICS(data,metric="euclidean"):
+    assignment = OPTICS(metric=metric).fit(data).labels_
+    return assignment
+
+"""
+  Run the Gaussian Mixture algorithm on the dataset
+  Parameters :
+    nb_components : The number of desired clusters
+  Returns :
+    An array of assignment for each sample to a cluster
+"""
+def clusterGMM(data,n_components=2,covariance_type="full"):
+    gm = GaussianMixture(n_components=n_components, covariance_type=covariance_type)
+    assignment = gm.fit(data).predict(data)
+    return assignment
 
 def concat_2Dlabel(data, d1, d2, labels):
     X = np.concatenate((np.reshape(data[:,d1], (len(data),1)),
