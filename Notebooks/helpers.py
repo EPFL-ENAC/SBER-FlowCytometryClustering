@@ -13,6 +13,8 @@ from sklearn.mixture import GaussianMixture
 from sklearn.metrics import f1_score, silhouette_score
 from sklearn.metrics.cluster import rand_score, adjusted_rand_score ,v_measure_score
 from sklearn.model_selection import train_test_split
+from flowsom import *
+from sklearn.cluster import AgglomerativeClustering
 import seaborn as sns;
 import matplotlib.pyplot as plt
 
@@ -110,7 +112,7 @@ def run_eval(X, y_true,y_pred):
     print("Completeness: %0.3f" % metrics.completeness_score(y_true, y_pred))
     print("V-measure: %0.3f" % metrics.v_measure_score(y_true, y_pred))
     print("Adjusted Mutual Information: %0.3f" % metrics.adjusted_mutual_info_score(y_true, y_pred))
-    print("Silhouette Coefficient: %0.3f" % metrics.silhouette_score(X, y_pred))
+#    print("Silhouette Coefficient: %0.3f" % #metrics.silhouette_score(X, y_pred))
     
             
 def run_FlowGrid(nbins=4,eps=1.1,isEvaluation=False):
@@ -118,24 +120,18 @@ def run_FlowGrid(nbins=4,eps=1.1,isEvaluation=False):
     if(isEvaluation):
         command+= " --l label_data.csv > output.txt"
     os.system(command)
-    
-def run_all_FlowGrid(columns,directory='../labeled_dataset/',output_directory='/outputs/'):
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    for entry in os.scandir(dir_path+"/"+directory):
-        if not entry.is_file:
-            continue
-        elif entry.path.endswith(".csv") and entry.is_file():
-            filename= entry.name
-            X,y = preprocess(directory+filename,columns)
-            print(entry.path)
-            run_FlowGrid()
-            output_labels = np.genfromtxt('fc_data_FlowGrid_label.csv', delimiter=',')
-            X = X.drop([0])
-            plt.figure()
-            pl = sns.scatterplot(data=X, x="B530-H", y="B572-H", hue=output_labels)
-            new_filename = filename.split(".")[0]
-            pl.figure.savefig(dir_path+output_directory+new_filename+"_flowgrid.png")
             
+def run_FlowSOM(file):
+    #fsom = flowsom(file, if_fcs=False, if_drop=True, drop_col=['FSC-H','SSC-H','FSC-A','SSC-A','B572-A','B675-A','Time','label'])
+    #fsom = flowsom(file, if_fcs=False, if_drop=True, drop_col=['Unnamed: 0'])
+    fsom = flowsom(file, if_fcs=False, if_drop=False)
+    fsom.som_mapping(50, 50, 5, sigma=2.5, 
+                 lr=0.1, batch_size=100)  # trains SOM with 100 iterations
+    fsom.meta_clustering(AgglomerativeClustering, min_n=40, 
+                     max_n=45, 
+                     iter_n=3) 
+    fsom.labeling()
+    return fsom.df
             
 def run_all(columns,directory='../labeled_dataset/',output_directory='/outputs/',clustering="kmeans"):
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -159,6 +155,12 @@ def run_all(columns,directory='../labeled_dataset/',output_directory='/outputs/'
                 y_pred = np.genfromtxt('fc_data_FlowGrid_label.csv', delimiter=',')
                 X_test = X_test.drop([0])
                 y_test = y_test.drop([0])
+            elif(command == "flowsom"):
+                save_to_csv(X,y,X_name="flowsom.csv",y_name="flowsom_label.csv")
+                output_df = run_FlowSOM('flowsom.csv')
+                y_pred = output_df['category']
+                X_test = X_test.drop([len(y)-1])
+                y_test = y_test.drop([len(y)-1])
             elif(command == "kmeans"):
                 cluster_model = clusterKMeans(X_train)
                 y_pred = cluster_model.predict(X_test)
