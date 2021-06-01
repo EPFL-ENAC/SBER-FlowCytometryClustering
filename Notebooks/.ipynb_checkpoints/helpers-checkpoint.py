@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import time
 from sklearn.covariance import EllipticEnvelope
 from sklearn import datasets, metrics, preprocessing, tree
 from scipy.stats import zscore
@@ -9,6 +10,11 @@ from scipy.cluster.vq import vq, kmeans as sci_kmean
 from sklearn.cluster import DBSCAN
 from sklearn.cluster import OPTICS
 from sklearn.mixture import GaussianMixture
+from sklearn.metrics import f1_score, silhouette_score
+from sklearn.metrics.cluster import rand_score, adjusted_rand_score ,v_measure_score
+from sklearn.model_selection import train_test_split
+import seaborn as sns;
+import matplotlib.pyplot as plt
 
 
 from data import *
@@ -69,21 +75,43 @@ def create_labeled_dataset(directory,columns,folder_output='/../labeled_dataset/
             #to_csv(df_labeled,dir_path+'/labeled_dataset/'+new_filename)
 
 def preprocess(file,columns):
+    print(file)
     df_labeled = pd.read_csv(file)
 
     #creation of X and y
     X,y = split_input_output(df_labeled,target_feature='label')
+    
+    X = X[columns]
+    
+    na_indexes = (X > 0).all(1)
 
+
+    #Standardize our data
+    X = np.log(X)
+    X = X[na_indexes]
+    y = y[na_indexes]
+    
+    scaler = preprocessing.StandardScaler()
+    X[X.columns] = scaler.fit_transform(X[X.columns])
+    
+        
     #Detect and remove outliers
     X,y = remove_outliers_with_y(X,y)
 
-    #Standardize our data
-    scaler = preprocessing.MinMaxScaler(feature_range=(-1,1))
-    X[X.columns] = scaler.fit_transform(X[X.columns])
-
+    
     #Save file in csv format
     save_to_csv(X,y)
     return X,y
+
+def run_eval(X, y_true,y_pred):
+    print("Rand Index: %0.3f" % metrics.rand_score(y_true, y_pred))
+    print("Adjusted Rand Index: %0.3f" % metrics.adjusted_rand_score(y_true, y_pred))
+    print("Homogeneity: %0.3f" % metrics.homogeneity_score(y_true, y_pred))
+    print("Completeness: %0.3f" % metrics.completeness_score(y_true, y_pred))
+    print("V-measure: %0.3f" % metrics.v_measure_score(y_true, y_pred))
+    print("Adjusted Mutual Information: %0.3f" % metrics.adjusted_mutual_info_score(y_true, y_pred))
+    print("Silhouette Coefficient: %0.3f" % metrics.silhouette_score(X, y_pred))
+    
             
 def run_FlowGrid(nbins=4,eps=1.1,isEvaluation=False):
     command = "python ../FlowGrid/sample_code.py --f fc_data.csv --n "+str(nbins)+" --eps "+str(eps)
@@ -91,30 +119,98 @@ def run_FlowGrid(nbins=4,eps=1.1,isEvaluation=False):
         command+= " --l label_data.csv > output.txt"
     os.system(command)
     
-def cluster(columns):
+def run_all_FlowGrid(columns,directory='../labeled_dataset/',output_directory='/outputs/'):
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    folder_intput = 'labeled_dataset/'
-    for entry in os.scandir(dir_path+directory):
+    for entry in os.scandir(dir_path+"/"+directory):
         if not entry.is_file:
             continue
         elif entry.path.endswith(".csv") and entry.is_file():
+            filename= entry.name
+            X,y = preprocess(directory+filename,columns)
             print(entry.path)
+            run_FlowGrid()
+            output_labels = np.genfromtxt('fc_data_FlowGrid_label.csv', delimiter=',')
+            X = X.drop([0])
+            plt.figure()
+            pl = sns.scatterplot(data=X, x="B530-H", y="B572-H", hue=output_labels)
+            new_filename = filename.split(".")[0]
+            pl.figure.savefig(dir_path+output_directory+new_filename+"_flowgrid.png")
             
-#directory: folder where you can find all_event and gated
-def cluster(directory,columns,label_gated,label_not_gated):
+            
+def run_all(columns,directory='../labeled_dataset/',output_directory='/outputs/',clustering="kmeans"):
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    folder_intput = 'labeled_dataset/'
-    folder_output = 'labeled_dataset/'
-    for filename in os.listdir(dir_path+ directory+folder_all):
-        if filename.endswith(".fcs"):
-            df_all = load_data(filename,directory+folder_all,columns)
-            df_gated = load_data(filename,directory+folder_gated,columns)
-            df_labeled = label(df_all,df_gated,label_gated=label_gated,label_not_gated=label_not_gated)
-            new_filename = filename.split(".")[0]+".csv"
-            df_labeled.to_csv(folder_output+new_filename, index=False)
+    for entry in os.scandir(dir_path+"/"+directory):
+        if not entry.is_file:
+            continue
+        elif entry.path.endswith(".csv") and entry.is_file():
+            filename= entry.name
+            X,y = preprocess(directory+filename,columns)
+            print(entry.path)
+            print(X.shape)
+            #X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+            X_train = X.copy()
+            X_test = X.copy()
+            y_train = y.copy()
+            y_test = y.copy()
+            command = clustering.lower()
+            if(command == "flowgrid"):
+                save_to_csv(X,y)
+                run_FlowGrid()
+                y_pred = np.genfromtxt('fc_data_FlowGrid_label.csv', delimiter=',')
+                X_test = X_test.drop([0])
+                y_test = y_test.drop([0])
+            elif(command == "kmeans"):
+                cluster_model = clusterKMeans(X_train)
+                y_pred = cluster_model.predict(X_test)
+            elif(command =="gmm"):
+                cluster_model = clusterGMM(X_train)
+                y_pred = cluster_model.predict(X_test)
+            elif(command =="optics"):
+                cluster_model = clusterOPTICS(X_test)
+                y_pred = cluster_model.labels_
+            elif(command =="dbscan"):
+                cluster_model = clusterDBSCAN(X_test)
+                y_pred = cluster_model.labels_
+            else:
+                print(f"Unknown clustering algorithm")
+                break
+            run_eval(X_test,y_test,y_pred)
+            plt.figure()
+            plt.title(entry.name + " - " + command)
+            pl = sns.scatterplot(data=X_test, x="B530-H", y="B572-H", hue=y_pred)
             
-            #new_filename = filename.split(".")[0]+".csv"
-            #to_csv(df_labeled,dir_path+'/labeled_dataset/'+new_filename)
+            new_filename = filename.split(".")[0]
+            pl.figure.savefig(dir_path+output_directory+new_filename+"_"+command+".png")
+   
+            
+def save_all_true(columns,directory='../labeled_dataset/',output_directory='/outputs/'):
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    for entry in os.scandir(dir_path+"/"+directory):
+        if not entry.is_file:
+            continue
+        elif entry.path.endswith(".csv") and entry.is_file():
+            filename= entry.name
+            X,y = preprocess(directory+filename,columns)
+            print(entry.path)
+            plt.figure()
+            plt.title(entry.name)
+            pl = sns.scatterplot(data=X, x="B530-H", y="B572-H", hue=y)
+            new_filename = filename.split(".")[0]
+            pl.figure.savefig(dir_path+output_directory+new_filename+"_true.png")
+    
+    
+#directory: folder where you can find all_event and gated
+#def cluster(directory,columns,label_gated,label_not_gated):
+#    dir_path = os.path.dirname(os.path.realpath(__file__))
+#    folder_intput = 'labeled_dataset/'
+#    folder_output = 'labeled_dataset/'
+#    for filename in os.listdir(dir_path+ directory+folder_all):
+#        if filename.endswith(".fcs"):
+#            df_all = load_data(filename,directory+folder_all,columns)
+#            df_gated = load_data(filename,directory+folder_gated,columns)
+#            df_labeled = label(df_all,df_gated,label_gated=label_gated,label_not_gated=label_not_gated)
+#            new_filename = filename.split(".")[0]+".csv"
+#            df_labeled.to_csv(folder_output+new_filename, index=False)
 
 def save_to_csv(X,y,X_name="fc_data.csv",y_name="label_data.csv"):
     to_csv(X,X_name)
@@ -167,9 +263,7 @@ def get_centroids(data,assignment):
     An array of assignment for each sample to a cluster
 """
 def clusterKMeans(data,n_clusters=2, random_state=0):
-    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state).fit(data)
-    labels = kmeans.labels_
-    return labels
+    return KMeans(n_clusters=n_clusters, random_state=random_state).fit(data)
 
 
 """
@@ -181,8 +275,7 @@ def clusterKMeans(data,n_clusters=2, random_state=0):
     An array of assignment for each sample to a cluster
 """
 def clusterDBSCAN(data,eps=0.7, min_samples=188,metric='euclidean', algorithm='auto'):
-    assignment = DBSCAN(eps=eps, min_samples=min_samples, metric=metric, algorithm=algorithm).fit(data).labels_
-    return assignment
+    return DBSCAN(eps=eps, min_samples=min_samples, metric=metric, algorithm=algorithm).fit(data)
 
 """
   Run the OPTICS algorithm on the dataset
@@ -190,8 +283,7 @@ def clusterDBSCAN(data,eps=0.7, min_samples=188,metric='euclidean', algorithm='a
     An array of assignment for each sample to a cluster
 """
 def clusterOPTICS(data,metric="euclidean"):
-    assignment = OPTICS(metric=metric).fit(data).labels_
-    return assignment
+    return OPTICS(metric=metric).fit(data)
 
 """
   Run the Gaussian Mixture algorithm on the dataset
@@ -201,9 +293,8 @@ def clusterOPTICS(data,metric="euclidean"):
     An array of assignment for each sample to a cluster
 """
 def clusterGMM(data,n_components=2,covariance_type="full"):
-    gm = GaussianMixture(n_components=n_components, covariance_type=covariance_type)
-    assignment = gm.fit(data).predict(data)
-    return assignment
+    return GaussianMixture(n_components=n_components, covariance_type=covariance_type).fit(data)
+     
 
 def concat_2Dlabel(data, d1, d2, labels):
     X = np.concatenate((np.reshape(data[:,d1], (len(data),1)),
@@ -250,16 +341,15 @@ def plot_results(data, channels, assignments):
 
 def plot_results_b530_b572(data, channels, assignments):
     plt.figure(figsize=(15,7.5))
-
     plt1 = plt.subplot(1,2,1)
-    dot_plot_personnalized(data, 2, 3, plot=plt1)
+    dot_plot_personnalized(data, 0, 3, plot=plt1)
     plt.gca().set_xlabel('B530-H')
     plt.gca().set_ylabel('B572-H')
 #    plt.gca().set_xlim(-3,3)
 #    plt.gca().set_ylim(-3,3)
 
     plt2 = plt.subplot(1,2,2)
-    dot_plot_personnalized(data, 2 ,3, colors=assignments)
+    dot_plot_personnalized(data, 0 ,3, colors=assignments)
     plt.gca().set_xlabel('B530-H')
     plt.gca().set_ylabel('B572-H')
 #    plt.gca().set_xlim(-3,3)
