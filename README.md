@@ -21,7 +21,7 @@ There are mainly Jupiter Notebooks available with a single helper file called `h
     * `Clustering-new-models.ipynb` which is used to tuned the state-of-the-art clustering algorithms like FlowSOM and FlowGrid.
     * `Exploratory.ipynb` and `Exploratory-labeled-data.ipynb` which were used to explore the different files and distributions.
     * `Clustering-evaluation.ipynb` is the file which evaluated the high dimensional algorithms on all the different files
-    * `Supervised.ipynb` which is used to create supervised models and test them
+    * `Supervised.ipynb` which is used to create supervised models and test them. At the end if this file, you will also find how to save and load models in order to avoid retraining them.
     * `Supervised-tuning.ipynb` which is used to tune all the different models and find the best train set.
 
 ## Authors
