@@ -153,6 +153,35 @@ def preprocess(file,columns):
 
 
 """
+ * Given a .fcs file and wanted columns
+ *
+ * Standardize the data and remove the outliers
+ * 
+ * return X the pre-processed unlabeled dataset
+"""            
+def preprocess_unlabeled(file,columns,folder='/../unlabeled_data/'):
+
+    X = load_data(file,folder,columns)
+
+   
+    
+    #Index of all values strictly positive (because we will apply log() to all our data for standardization)
+    na_indexes = (X > 0).all(1)
+
+    #Standardize our data
+    X = X[na_indexes]
+    X = np.log(X)
+
+    scaler = preprocessing.StandardScaler()
+    X[columns] = scaler.fit_transform(X[columns])
+    
+    #Detect and remove outliers
+    X,indexes = remove_outliers(X)
+    
+    return X
+
+
+"""
  * Given true y and prediction y
  *
  * Print all clustering evaluation metric
